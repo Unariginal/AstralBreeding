@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "astralbreeding",
+  "version": "${version}",
+  "name": "AstralBreeding",
+  "description": "Breeding!",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/astralbreeding/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "me.unariginal.astralbreeding.AstralBreeding"
+    ]
+  },
+  "mixins": [
+    "astralbreeding.mixins.json",
+    {
+      "config": "astralbreeding.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}",
+    "cobblemon": "1.6.1+1.21.1"
+  }
+}
