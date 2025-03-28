@@ -2,6 +2,9 @@ package me.unariginal.astralbreeding.commands;
 
 import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.CobblemonItems;
+import com.cobblemon.mod.common.api.Priority;
+import com.cobblemon.mod.common.api.abilities.Ability;
+import com.cobblemon.mod.common.api.abilities.AbilityTemplate;
 import com.cobblemon.mod.common.api.pokemon.Natures;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.api.pokemon.egg.EggGroup;
@@ -21,6 +24,7 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class AstralCommands {
     private final AstralBreeding ab = AstralBreeding.INSTANCE;
@@ -107,7 +111,8 @@ public class AstralCommands {
                     properties.setSpecies(baby_Form.getSpecies().showdownId());
                     properties.setForm(baby_Form.formOnlyShowdownId());
                     properties.setIvs(ivs);
-                    properties.setNature(nature.getDisplayName());
+                    properties.setNature(nature.getName().toString());
+                    properties.setAbility(getAbility(mother, father, baby_Form));
 
                     Pokemon baby = properties.create();
                     baby.setFriendship(120, true);
@@ -250,6 +255,59 @@ public class AstralCommands {
         }
 
         return nature;
+    }
+
+    /* The logic...
+     *
+     * In gen 3 and 4, abilities cannot be inherited by breeding. Instead, the egg will get a random ability from
+     *   its possible abilities.
+     *
+     * As of gen 5, parents have a chance to pass down their ability in certain circumstances. When male/female breeding,
+     *   only the female's ability is relevant; when with a ditto, only the non-ditto parent's. (Might have to do something
+     *   special for Rockruff)
+     *
+     ************************************************
+     * Regular Abilities
+     *
+     * In gen 5 (B2/W2), if a female is bred with a male, but not a ditto, there's an 80% chance the baby will have the
+     *   mother's nature. Pokemon bred with a ditto will not pass down an ability.
+     *
+     * In gen 6 onward, if the female has a non-hidden ability, there's an 80% chance the baby will have the mother's nature regardless
+     *   of ditto being involved.
+     *
+     * Hidden Abilities
+     *
+     * In gen 5 (B/W), if the female pokemon has a hidden ability, and is bred with a male (not ditto), there's a 60% chance of
+     *   passing down the hidden ability. In B2/W2, this chance is instead 80%. Male and genderless pokemon cannot pass down their
+     *   abilities in these games.
+     *
+     * From gen 6 onward, if a female or any pokemon bred with a ditto has a hidden ability, there's a 60% chance that the baby
+     *   will have it's hidden ability.
+     */
+    private String getAbility(Pokemon mother, Pokemon father, FormData baby) {
+        Ability ability = mother.getAbility();
+        Priority priority = ability.getPriority();
+
+        List<AbilityTemplate> nonHAAbilities = new ArrayList<>();
+        baby.getAbilities().getMapping().values().forEach(mapping -> {
+            mapping.forEach(potentialAbility -> {
+                if (!potentialAbility.getPriority().equals(Priority.LOW)) {
+                    nonHAAbilities.add(potentialAbility.getTemplate());
+                }
+            });
+        });
+
+        int chance = 8;
+        if (priority.equals(Priority.LOW)) {
+            chance = 6;
+        }
+
+        int random = new Random().nextInt(10);
+        if (random < chance) {
+            return ability.getName();
+        }
+
+        return nonHAAbilities.get(new Random().nextInt(nonHAAbilities.size())).getName();
     }
 
     private Pokemon getRandomParent(Pair<Pokemon, Pokemon> parents) {
