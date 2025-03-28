@@ -2,6 +2,7 @@ package me.unariginal.astralbreeding.commands;
 
 import com.cobblemon.mod.common.Cobblemon;
 import com.cobblemon.mod.common.CobblemonItems;
+import com.cobblemon.mod.common.api.pokemon.Natures;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.api.pokemon.egg.EggGroup;
 import com.cobblemon.mod.common.api.pokemon.labels.CobblemonPokemonLabels;
@@ -19,10 +20,7 @@ import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 
 public class AstralCommands {
     private final AstralBreeding ab = AstralBreeding.INSTANCE;
@@ -104,10 +102,12 @@ public class AstralCommands {
                     PokemonProperties properties = new PokemonProperties();
                     FormData baby_Form = getEgg(mother);
                     IVs ivs = getIVs(mother, father);
+                    Nature nature = getNature(mother, father);
 
                     properties.setSpecies(baby_Form.getSpecies().showdownId());
                     properties.setForm(baby_Form.formOnlyShowdownId());
                     properties.setIvs(ivs);
+                    properties.setNature(nature.getDisplayName());
 
                     Pokemon baby = properties.create();
                     baby.setFriendship(120, true);
@@ -127,6 +127,28 @@ public class AstralCommands {
         return 1;
     }
 
+    /* The logic...
+     *
+     * In Gen 2, IVs are not used, instead DVs are used, so I will be skipping implementation of this generation for the time being.
+     *
+     * In Gen 3 (Not Emerald), baby will inherit 3 different stats, at least 1 from both parents.
+     *
+     * As Of Gen 3 (Emerald), baby gets first random iv from random parent. Then, another stat (NOT HP) from a random parent
+     *   so long as it's not the SAME stat from the SAME parent. If it's the same stat from the OTHER parent,
+     *   the previously selected IV gets overwritten. Finally, the third stat is chosen (NOT HP OR DEFENSE) still overriding
+     *   previously chosen ivs if it's not from the same parent. The remaining stats (could be 3-5 stats) are randomly generated.
+     *
+     * As of Gen 4 (Not D/P/PL), baby will inherit 3 ivs of different stats from either parent, no repeats or overriding. If a
+     *   parent is holding a power item, that power item's corresponding stat will be inherited from that parent, and the
+     *   remaining stats are selected randomly from either parent as stated before. If both parents hold a power item, only
+     *   one of the power items is used, chosen at random.
+     *
+     * Currently as of Gen 6, if at least one parent is holding a destiny knot, the baby will inherit 5 ivs instead of 3.
+     *   If the other parent is holding a power item, the baby will still only inherit a total of 5 stats, but one of them
+     *   will be of the power item's corresponding stat from the power item parent.
+     *
+     * No plans to implement swap breeding currently.
+     */
     private IVs getIVs(Pokemon mother, Pokemon father) {
         IVs toReturn = IVs.createRandomIVs(0);
         Pair<Pokemon, Pokemon> parents = new Pair<>(mother, father);
@@ -161,29 +183,6 @@ public class AstralCommands {
             final_stats.put(stat, parent.getIvs().get(stat));
         }
 
-        /* The logic...
-         *
-         * In Gen 2, IVs are not used, instead DVs are used, so I will be skipping implementation of this generation for the time being.
-         *
-         * In Gen 3 (Not Emerald), baby will inherit 3 different stats, at least 1 from both parents.
-         *
-         * As Of Gen 3 (Emerald), baby gets first random iv from random parent. Then, another stat (NOT HP) from a random parent
-         *   so long as it's not the SAME stat from the SAME parent. If it's the same stat from the OTHER parent,
-         *   the previously selected IV gets overwritten. Finally, the third stat is chosen (NOT HP OR DEFENSE) still overriding
-         *   previously chosen ivs if it's not from the same parent. The remaining stats (could be 3-5 stats) are randomly generated.
-         *
-         * As of Gen 4 (Not D/P/PL), baby will inherit 3 ivs of different stats from either parent, no repeats or overriding. If a
-         *   parent is holding a power item, that power item's corresponding stat will be inherited from that parent, and the
-         *   remaining stats are selected randomly from either parent as stated before. If both parents hold a power item, only
-         *   one of the power items is used, chosen at random.
-         *
-         * Currently as of Gen 6, if at least one parent is holding a destiny knot, the baby will inherit 5 ivs instead of 3.
-         *   If the other parent is holding a power item, the baby will still only inherit a total of 5 stats, but one of them
-         *   will be of the power item's corresponding stat from the power item parent.
-         *
-         * No plans to implement swap breeding currently.
-         */
-
         // X/Y (Gen 6) [Introduced the use of Destiny Knot in breeding to retain 5 IVs instead of 3.]
         for (int ivsRemaining = (mother.heldItem().getItem().equals(CobblemonItems.DESTINY_KNOT) || father.heldItem().getItem().equals(CobblemonItems.DESTINY_KNOT)) ? 4 : 2; ivsRemaining > 0; ivsRemaining--) {
             Stats stat = Stats.getEntries().get(new Random().nextInt(6));
@@ -201,17 +200,6 @@ public class AstralCommands {
         }
 
         return toReturn;
-    }
-
-    private Pokemon getRandomParent(Pair<Pokemon, Pokemon> parents) {
-        int randomNum = new Random().nextInt(0, 2);
-        ab.logInfo("[AstralBreeding] Random Parent: " + randomNum);
-        if (randomNum == 0) {
-            ab.logInfo("[AstralBreeding] Selecting first parent.");
-            return parents.getFirst();
-        }
-        ab.logInfo("[AstralBreeding] Selecting second parent.");
-        return parents.getSecond();
     }
 
     private Stats getPowerItemIV(Pokemon pokemon) {
@@ -233,6 +221,48 @@ public class AstralCommands {
 
         return null;
     }
+
+    /* The logic...
+     *
+     * In Gen 3 (Emerald), if the mother or ditto is holding an Everstone, the baby has a 50% chance of inheriting
+     *   that pokemon's nature.
+     *
+     * In Gen 4 (HG/SS), whichever pokemon is holding an Everstone will have a chance of passing down its nature,
+     *   regardless of gender or ditto.
+     *
+     * As of Gen 5 (B2/W2), a pokemon holding an everstone will always pass down its nature. If both parents are holding
+     *   an everstone, the nature is picked at random from either parent.
+     */
+    private Nature getNature(Pokemon mother, Pokemon father) {
+        Nature nature = Natures.INSTANCE.getRandomNature();
+        Pair<Pokemon, Pokemon> parents = new Pair<>(mother, father);
+
+        List<Nature> possible_natures = new ArrayList<>();
+        if (mother.heldItem().getItem().equals(CobblemonItems.EVERSTONE)) {
+            possible_natures.add(mother.getNature());
+        }
+        if (father.heldItem().getItem().equals(CobblemonItems.EVERSTONE)) {
+            possible_natures.add(father.getNature());
+        }
+
+        if (!possible_natures.isEmpty()) {
+            nature = possible_natures.get(new Random().nextInt(possible_natures.size()));
+        }
+
+        return nature;
+    }
+
+    private Pokemon getRandomParent(Pair<Pokemon, Pokemon> parents) {
+        int randomNum = new Random().nextInt(0, 2);
+        ab.logInfo("[AstralBreeding] Random Parent: " + randomNum);
+        if (randomNum == 0) {
+            ab.logInfo("[AstralBreeding] Selecting first parent.");
+            return parents.getFirst();
+        }
+        ab.logInfo("[AstralBreeding] Selecting second parent.");
+        return parents.getSecond();
+    }
+
 
     private FormData getEgg(Pokemon mother) {
         FormData form = mother.getForm();
