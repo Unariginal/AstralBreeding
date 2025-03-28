@@ -5,6 +5,8 @@ import com.cobblemon.mod.common.CobblemonItems;
 import com.cobblemon.mod.common.api.Priority;
 import com.cobblemon.mod.common.api.abilities.Ability;
 import com.cobblemon.mod.common.api.abilities.AbilityTemplate;
+import com.cobblemon.mod.common.api.events.CobblemonEvents;
+import com.cobblemon.mod.common.api.events.pokemon.ShinyChanceCalculationEvent;
 import com.cobblemon.mod.common.api.pokeball.PokeBalls;
 import com.cobblemon.mod.common.api.pokemon.Natures;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
@@ -17,6 +19,7 @@ import com.cobblemon.mod.common.pokemon.*;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import kotlin.Pair;
+import kotlin.Unit;
 import me.unariginal.astralbreeding.AstralBreeding;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.item.Item;
@@ -26,7 +29,7 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class AstralCommands {
     private final AstralBreeding ab = AstralBreeding.INSTANCE;
@@ -110,6 +113,7 @@ public class AstralCommands {
                     IVs ivs = getIVs(mother, father);
                     Nature nature = getNature(mother, father);
                     PokeBall ball = getPokeball(mother, father);
+                    boolean shiny = getShiny(mother, father, player);
 
                     properties.setSpecies(baby_Form.getSpecies().showdownId());
                     properties.setForm(baby_Form.formOnlyShowdownId());
@@ -117,6 +121,7 @@ public class AstralCommands {
                     properties.setNature(nature.getName().toString());
                     properties.setAbility(getAbility(mother, father, baby_Form));
                     properties.setPokeball(ball.getName().toString());
+                    properties.setShiny(shiny);
 
                     Pokemon baby = properties.create();
                     baby.setFriendship(120, true);
@@ -340,6 +345,46 @@ public class AstralCommands {
         }
 
         return ball;
+    }
+
+    /* The Logic...
+     *
+     * Gen 3, standard shiny rate
+     *
+     * Gen 4, Masuda adds 4 personality values, effectively 5/shiny rate
+     *
+     * Gen 5, Masuda method now adds 5 personality values (6/shiny rate). Shiny charm introduced,
+     *   if the player has a shiny charm when an egg is generated, 2 more personality values (3/shiny rate).
+     *   These methods can be combined for a total of 7 personality values (8/shiny rate)
+     *
+     * Gen 6, shiny rate changed to 1/4096. This doesn't matter, servers set what they want.
+     *
+     * Gen 8, the initial personality value is skipped if bonus rolls are applied. Masuda method now
+     *   adds 6 personality values, however the first 1 is skipped, so it is effectively the same.
+     *   Shiny charm's first personality value is skipped, making it 2/shiny rate instead of 3. But it still
+     *   does add 3 personality values. Combining these methods totals (6 + 3 - 1)/shiny rate.
+     */
+    private boolean getShiny(Pokemon mother, Pokemon father, ServerPlayerEntity player) {
+        AtomicReference<Float> atomicShinyRate = new AtomicReference<>(Cobblemon.config.getShinyRate());
+        CobblemonEvents.SHINY_CHANCE_CALCULATION.post(new ShinyChanceCalculationEvent[]{}, event -> {
+            atomicShinyRate.set(event.calculate(player));
+            return Unit.INSTANCE;
+        });
+
+        float shinyRate = atomicShinyRate.get();
+        int pValues = 1;
+
+        String mother_owner = (mother.getOriginalTrainer() != null) ? mother.getOriginalTrainer() : Objects.requireNonNull(mother.getOwnerPlayer()).getUuidAsString();
+        String father_owner = (father.getOriginalTrainer() != null) ? father.getOriginalTrainer() : Objects.requireNonNull(father.getOwnerPlayer()).getUuidAsString();
+
+        if (!mother_owner.equalsIgnoreCase(father_owner)) {
+            pValues--;
+            pValues += 6;
+        }
+
+        shinyRate = pValues / shinyRate;
+
+        return new Random().nextFloat(shinyRate) == 0;
     }
 
     private Pokemon getRandomParent(Pair<Pokemon, Pokemon> parents) {
