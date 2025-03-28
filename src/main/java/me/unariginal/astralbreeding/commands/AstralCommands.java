@@ -5,12 +5,14 @@ import com.cobblemon.mod.common.CobblemonItems;
 import com.cobblemon.mod.common.api.Priority;
 import com.cobblemon.mod.common.api.abilities.Ability;
 import com.cobblemon.mod.common.api.abilities.AbilityTemplate;
+import com.cobblemon.mod.common.api.pokeball.PokeBalls;
 import com.cobblemon.mod.common.api.pokemon.Natures;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
 import com.cobblemon.mod.common.api.pokemon.egg.EggGroup;
 import com.cobblemon.mod.common.api.pokemon.labels.CobblemonPokemonLabels;
 import com.cobblemon.mod.common.api.pokemon.stats.Stats;
 import com.cobblemon.mod.common.api.storage.party.PartyStore;
+import com.cobblemon.mod.common.pokeball.PokeBall;
 import com.cobblemon.mod.common.pokemon.*;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -107,12 +109,14 @@ public class AstralCommands {
                     FormData baby_Form = getEgg(mother);
                     IVs ivs = getIVs(mother, father);
                     Nature nature = getNature(mother, father);
+                    PokeBall ball = getPokeball(mother, father);
 
                     properties.setSpecies(baby_Form.getSpecies().showdownId());
                     properties.setForm(baby_Form.formOnlyShowdownId());
                     properties.setIvs(ivs);
                     properties.setNature(nature.getName().toString());
                     properties.setAbility(getAbility(mother, father, baby_Form));
+                    properties.setPokeball(ball.getName().toString());
 
                     Pokemon baby = properties.create();
                     baby.setFriendship(120, true);
@@ -310,6 +314,34 @@ public class AstralCommands {
         return nonHAAbilities.get(new Random().nextInt(nonHAAbilities.size())).getName();
     }
 
+    /* The logic...
+     *
+     * As of Gen 7, pokemon breeding with different species will result in the female's or non-ditto's pokeball being
+     *   passed down. If they're the same species, regardless of form, it will pick between both parent's pokeballs.
+     *
+     * The master ball, cherish ball, and strange ball count as a normal pokeball.
+     */
+    private PokeBall getPokeball(Pokemon mother, Pokemon father) {
+        PokeBall ball = mother.getCaughtBall();
+
+        if (mother.getSpecies().equals(father.getSpecies())) {
+            List<PokeBall> balls = new ArrayList<>();
+            balls.add(filterBall(mother.getCaughtBall()));
+            balls.add(filterBall(father.getCaughtBall()));
+            ball = balls.get(new Random().nextInt(balls.size()));
+        }
+
+        return ball;
+    }
+
+    private PokeBall filterBall(PokeBall ball) {
+        if (ball.equals(PokeBalls.INSTANCE.getMASTER_BALL()) || ball.equals(PokeBalls.INSTANCE.getCHERISH_BALL())) {
+            return PokeBalls.INSTANCE.getPOKE_BALL();
+        }
+
+        return ball;
+    }
+
     private Pokemon getRandomParent(Pair<Pokemon, Pokemon> parents) {
         int randomNum = new Random().nextInt(0, 2);
         ab.logInfo("[AstralBreeding] Random Parent: " + randomNum);
@@ -320,7 +352,6 @@ public class AstralCommands {
         ab.logInfo("[AstralBreeding] Selecting second parent.");
         return parents.getSecond();
     }
-
 
     private FormData getEgg(Pokemon mother) {
         FormData form = mother.getForm();
