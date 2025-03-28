@@ -5,6 +5,9 @@
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/AstralBreeding.client.iml" filepath="$PROJECT_DIR$/.idea/modules/AstralBreeding.client.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/AstralBreeding.main.iml" filepath="$PROJECT_DIR$/.idea/modules/AstralBreeding.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/AstralBreeding.test.iml" filepath="$PROJECT_DIR$/.idea/modules/AstralBreeding.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/me.unariginal.AstralBreeding.client.iml" filepath="$PROJECT_DIR$/.idea/modules/me.unariginal.AstralBreeding.client.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/me.unariginal.AstralBreeding.main.iml" filepath="$PROJECT_DIR$/.idea/modules/me.unariginal.AstralBreeding.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/me.unariginal.AstralBreeding.test.iml" filepath="$PROJECT_DIR$/.idea/modules/me.unariginal.AstralBreeding.test.iml" />
     </modules>
   </component>
 </project>

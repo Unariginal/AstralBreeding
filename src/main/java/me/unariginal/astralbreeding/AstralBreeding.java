@@ -12,7 +12,7 @@ public class AstralBreeding implements ModInitializer {
     private final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     public static AstralBreeding INSTANCE;
-    public static boolean DEBUG = false;
+    public static boolean DEBUG = true;
 
     private MinecraftServer server;
 
