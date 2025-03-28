@@ -10,7 +10,10 @@ import com.cobblemon.mod.common.api.events.pokemon.ShinyChanceCalculationEvent;
 import com.cobblemon.mod.common.api.pokeball.PokeBalls;
 import com.cobblemon.mod.common.api.pokemon.Natures;
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties;
+import com.cobblemon.mod.common.api.pokemon.PokemonSpecies;
 import com.cobblemon.mod.common.api.pokemon.egg.EggGroup;
+import com.cobblemon.mod.common.api.pokemon.feature.FlagSpeciesFeature;
+import com.cobblemon.mod.common.api.pokemon.feature.StringSpeciesFeature;
 import com.cobblemon.mod.common.api.pokemon.labels.CobblemonPokemonLabels;
 import com.cobblemon.mod.common.api.pokemon.stats.Stats;
 import com.cobblemon.mod.common.api.storage.party.PartyStore;
@@ -30,6 +33,7 @@ import net.minecraft.text.Text;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 public class AstralCommands {
     private final AstralBreeding ab = AstralBreeding.INSTANCE;
@@ -76,6 +80,11 @@ public class AstralCommands {
 
                 boolean dittoBreeding = first_Ditto || second_Ditto;
 
+                if (first_Species.getLabels().contains(CobblemonPokemonLabels.BABY) || second_Species.getLabels().contains(CobblemonPokemonLabels.BABY)) {
+                    player.sendMessage(Text.literal("[Astral] Cannot Breed Baby Pokemon!"));
+                    return 0;
+                }
+
                 if (first_Ditto && second_Ditto) {
                     player.sendMessage(Text.literal("[Astral] Cannot Breed Two Dittos!"));
                     return 0;
@@ -119,9 +128,43 @@ public class AstralCommands {
                     properties.setForm(baby_Form.formOnlyShowdownId());
                     properties.setIvs(ivs);
                     properties.setNature(nature.getName().toString());
-                    properties.setAbility(getAbility(mother, father, baby_Form));
+                    properties.setAbility(getAbility(mother, baby_Form));
                     properties.setPokeball(ball.getName().toString());
                     properties.setShiny(shiny);
+                    properties.setAspects(new HashSet<>(getAspects(mother)));
+
+                    if (properties.getSpecies() != null) {
+                        for (FormData form : PokemonSpecies.INSTANCE.getByName(properties.getSpecies()).getForms()) {
+                            if (form.formOnlyShowdownId().equalsIgnoreCase(properties.getForm())) {
+                                for (String aspect : properties.getAspects()) {
+                                    ab.logInfo("[AstralBreeding] Aspect: " + aspect);
+                                    properties.getCustomProperties().add(new FlagSpeciesFeature(aspect, true));
+
+                                    String[] split = aspect.split("-");
+                                    ab.logInfo("[AstralBreeding] Split: " + split[split.length - 1]);
+                                    String region = split[split.length - 1];
+
+                                    if (region.equalsIgnoreCase("alolan")) {
+                                        region = "alola";
+                                        properties.getCustomProperties().add(new StringSpeciesFeature("region_bias", region));
+                                    }
+                                    if (region.equalsIgnoreCase("galarian")) {
+                                        region = "galar";
+                                        properties.getCustomProperties().add(new StringSpeciesFeature("region_bias", region));
+                                    }
+                                    if (region.equalsIgnoreCase("hisuian")) {
+                                        region = "hisui";
+                                        properties.getCustomProperties().add(new StringSpeciesFeature("region_bias", region));
+                                    }
+
+                                    if (aspect.contains("striped")) {
+                                        properties.getCustomProperties().add(new StringSpeciesFeature("fish_stripes", aspect.substring(0, aspect.indexOf("striped"))));
+                                    }
+                                    ab.logInfo("[AstralBreeding] Aspect Added");
+                                }
+                            }
+                        }
+                    }
 
                     Pokemon baby = properties.create();
                     baby.setFriendship(120, true);
@@ -293,7 +336,7 @@ public class AstralCommands {
      * From gen 6 onward, if a female or any pokemon bred with a ditto has a hidden ability, there's a 60% chance that the baby
      *   will have it's hidden ability.
      */
-    private String getAbility(Pokemon mother, Pokemon father, FormData baby) {
+    private String getAbility(Pokemon mother, FormData baby) {
         Ability ability = mother.getAbility();
         Priority priority = ability.getPriority();
 
@@ -365,13 +408,15 @@ public class AstralCommands {
      *   does add 3 personality values. Combining these methods totals (6 + 3 - 1)/shiny rate.
      */
     private boolean getShiny(Pokemon mother, Pokemon father, ServerPlayerEntity player) {
+        ab.logInfo("[AstralBreeding] Getting Shiny");
         AtomicReference<Float> atomicShinyRate = new AtomicReference<>(Cobblemon.config.getShinyRate());
-        CobblemonEvents.SHINY_CHANCE_CALCULATION.post(new ShinyChanceCalculationEvent[]{}, event -> {
+        CobblemonEvents.SHINY_CHANCE_CALCULATION.post(new ShinyChanceCalculationEvent[]{new ShinyChanceCalculationEvent(atomicShinyRate.get(), mother)}, event -> {
             atomicShinyRate.set(event.calculate(player));
             return Unit.INSTANCE;
         });
 
         float shinyRate = atomicShinyRate.get();
+        ab.logInfo("[AstralBreeding] Shiny Rate: " + shinyRate);
         int pValues = 1;
 
         String mother_owner = (mother.getOriginalTrainer() != null) ? mother.getOriginalTrainer() : Objects.requireNonNull(mother.getOwnerPlayer()).getUuidAsString();
@@ -381,10 +426,20 @@ public class AstralCommands {
             pValues--;
             pValues += 6;
         }
+        ab.logInfo("[AstralBreeding] P values: " + pValues);
 
-        shinyRate = pValues / shinyRate;
+        shinyRate /= pValues;
+        ab.logInfo("[AstralBreeding] New Shiny Rate: " + shinyRate);
 
-        return new Random().nextFloat(shinyRate) == 0;
+        return new Random().nextInt(Math.round(shinyRate)) == 0;
+    }
+
+    private List<String> getAspects(Pokemon mother) {
+        List<String> motherAspects = new ArrayList<>(mother.getAspects());
+        motherAspects.remove("shiny");
+        motherAspects.remove("male");
+        motherAspects.remove("female");
+        return motherAspects;
     }
 
     private Pokemon getRandomParent(Pair<Pokemon, Pokemon> parents) {
@@ -408,10 +463,14 @@ public class AstralCommands {
 
         for (FormData formData : baby_Species.getForms()) {
             if (formData.formOnlyShowdownId().contains(form.formOnlyShowdownId())) {
+                ab.logInfo("[AstralBreeding] Mother Form: " + form.formOnlyShowdownId());
+                ab.logInfo("[AstralBreeding] Baby Form: " + formData.formOnlyShowdownId());
                 return formData;
             }
         }
 
+        ab.logInfo("[AstralBreeding] Mother Form: " + form.formOnlyShowdownId());
+        ab.logInfo("[AstralBreeding] Baby Form: " + baby_Species.getStandardForm().formOnlyShowdownId());
         return baby_Species.getStandardForm();
     }
 
